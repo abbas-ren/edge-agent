@@ -5,7 +5,8 @@ legacy C `DeviceAgent` while preserving its HTTP and FarmController contracts.
 
 ## Capabilities
 
-- Registers at `POST /api/v1/device/` and waits for FarmController approval.
+- Registers at `POST /api/v1/device/` before opening its heartbeat session.
+- Prepares the configured UID file from the interface MAC at every startup.
 - Sends JSON-object inventory heartbeats to `/ws?deviceId=<MAC_WITHOUT_COLONS>`.
 - Serves the compatibility API on port `8888`.
 - Configures U-Boot with direct `fw_setenv` argument calls; no shell is used.
@@ -24,7 +25,7 @@ Install these files and tools:
 | `/usr/bin/edgeagent-rs` | Agent binary |
 | `/etc/edgeagent/config.toml` | Strict service configuration |
 | `/mnt/emmc` | Writable persistent mount |
-| `/mnt/emmc/UID.txt` | Approved MAC-derived device ID, created by the agent |
+| `/mnt/emmc/UID.txt` | MAC-derived device ID, prepared by the agent without separators or trailing bytes |
 | `/mnt/emmc/timeout` | Runtime heartbeat interval, created by the agent |
 | `/usr/src/tests/<testId>/<caseId>.sh` | Executable testcases from the NFS image |
 | `/etc/fw_env.config` | Valid U-Boot environment layout for the board |
@@ -82,9 +83,9 @@ is configured. Without a token, requests are source-IP allowlisted.
 | Method | Route | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Process health and reboot state |
-| `GET` | `/ready` | Approval readiness |
+| `GET` | `/ready` | Local identity readiness |
 | `GET` | `/status` | Identity, generation, and active test |
-| `POST` | `/approve` | Persist `{"UID":"aabbccddeeff"}` |
+| `POST` | `/approve` | Validate and confirm `{"UID":"aabbccddeeff"}` |
 | `POST` | `/delete` | Remove approval and heartbeat persistence |
 | `POST` | `/configure/heartbeat` | Persist and immediately apply `{"timeout":5}` |
 | `POST` | `/flash` | Validate and configure the requested NFS boot |

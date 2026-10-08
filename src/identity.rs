@@ -20,15 +20,21 @@ impl Identity {
             .with_context(|| format!("read MAC address from {}", mac_path.display()))?;
         let mac_address = normalize_mac(&mac_address)?;
         let device_id = mac_address.replace(':', "");
-        let approved_uid = read_optional_trimmed(&config.paths.uid)?;
-        if let Some(uid) = &approved_uid {
-            validate_uid(uid, &device_id)?;
-        }
+        prepare_uid(&config.paths.uid, &device_id)?;
         Ok(Self {
             mac_address,
-            device_id,
-            approved_uid,
+            device_id: device_id.clone(),
+            approved_uid: Some(device_id),
         })
+    }
+}
+
+fn prepare_uid(path: &Path, device_id: &str) -> anyhow::Result<()> {
+    match fs::read(path) {
+        Ok(value) if value == device_id.as_bytes() => Ok(()),
+        Ok(_) => atomic_write(path, device_id),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => atomic_write(path, device_id),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -85,15 +91,6 @@ pub fn atomic_write(path: &Path, value: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn read_optional_trimmed(path: &Path) -> anyhow::Result<Option<String>> {
-    match fs::read_to_string(path) {
-        Ok(value) if !value.trim().is_empty() => Ok(Some(value.trim().to_owned())),
-        Ok(_) => Ok(None),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error.into()),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +105,18 @@ mod tests {
             validate_uid("aabbccddeeff", "aabbccddeeff").unwrap(),
             "aabbccddeeff"
         );
+    }
+
+    #[test]
+    fn prepares_exact_mac_derived_uid() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("UID.txt");
+
+        prepare_uid(&path, "aabbccddeeff").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"aabbccddeeff");
+
+        fs::write(&path, b"001122334455\n").unwrap();
+        prepare_uid(&path, "aabbccddeeff").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"aabbccddeeff");
     }
 }

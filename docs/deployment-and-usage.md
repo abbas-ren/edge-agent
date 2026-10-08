@@ -83,8 +83,8 @@ used when FarmController proxies target logs and log-level changes.
 
 ## Validate and start
 
-The configuration check reads the configured interface MAC and persisted UID,
-so run it on the target rather than the build host:
+The configuration check reads the configured interface MAC and prepares the UID
+file, so run it on the target rather than the build host:
 
 ```sh
 /usr/bin/edgeagent-rs --config /etc/edgeagent/config.toml --check
@@ -102,14 +102,14 @@ curl --fail http://127.0.0.1:8888/health
 curl -i http://127.0.0.1:8888/ready
 ```
 
-`/ready` returns `503` until FarmController approves the target and `200`
-after `/mnt/emmc/UID.txt` has been persisted.
+`/ready` returns `200` after the MAC-derived identity has been prepared.
 
 ## Normal operation
 
-The agent registers itself with FarmController, then maintains
-`/ws?deviceId=<MAC_WITHOUT_COLONS>`. Heartbeats contain structured hardware
-inventory. FarmController approval writes the canonical device ID atomically.
+The agent atomically writes the configured interface MAC to the UID path without
+separators or trailing bytes, registers itself with FarmController, then
+maintains `/ws?deviceId=<MAC_WITHOUT_COLONS>`. Heartbeats contain structured
+hardware inventory. FarmController approval validates the canonical device ID.
 
 Administrators view target logs through the frontend Logs page:
 

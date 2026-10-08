@@ -13,26 +13,27 @@ use crate::{
 pub async fn run(state: Arc<AppState>) {
     let mut backoff = Duration::from_secs(1);
     let mut resumed = false;
+    let mut registered = false;
     while !state.shutdown.is_cancelled() {
-        if state
+        let uid_available = state
             .approved_uid
             .read()
             .unwrap_or_else(|error| error.into_inner())
-            .is_none()
-            && let Err(error) = register(&state).await
-        {
-            state.warn(
-                "edgeagent::client",
-                "device registration failed",
-                serde_json::json!({"error": error.to_string()}),
-            );
+            .is_some();
+        if !registered || !uid_available {
+            match register(&state).await {
+                Ok(()) => registered = true,
+                Err(error) => {
+                    registered = false;
+                    state.warn(
+                        "edgeagent::client",
+                        "device registration failed",
+                        serde_json::json!({"error": error.to_string()}),
+                    );
+                }
+            }
         }
-        if state
-            .approved_uid
-            .read()
-            .unwrap_or_else(|error| error.into_inner())
-            .is_some()
-        {
+        if registered && uid_available {
             if !resumed {
                 crate::operations::resume_test_if_present(Arc::clone(&state)).await;
                 resumed = true;
