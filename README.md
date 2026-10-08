@@ -153,7 +153,7 @@ Show the standalone builder options or validate a matrix without compiling:
 
 ```sh
 scripts/cross-build.sh --help
-scripts/cross-build.sh --generation all --target aarch64-unknown-linux-gnu --dry-run
+scripts/cross-build.sh --generation all --target aarch64-unknown-linux-gnu --allow-generic --dry-run
 ```
 
 ## Development validation

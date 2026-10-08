@@ -91,11 +91,26 @@ cross-toolchain:
 sudo apt-get update
 sudo apt-get install gcc-aarch64-linux-gnu libc6-dev-arm64-cross
 rustup target add aarch64-unknown-linux-gnu
-scripts/cross-build.sh --generation all --target aarch64-unknown-linux-gnu
+scripts/cross-build.sh --generation all --target aarch64-unknown-linux-gnu --allow-generic
 ```
 
 This generic toolchain is useful for development, but its glibc can be newer
-than an existing target image. Use that image's Yocto SDK for release artifacts.
+than an existing target image. Never deploy these generic bundles without
+checking their manifest against the target. Use that image's Yocto SDK for
+release artifacts.
+
+A static musl build avoids the target's glibc entirely when a matching Yocto
+SDK is unavailable. Install an AArch64 musl cross-compiler and run:
+
+```sh
+rustup target add aarch64-unknown-linux-musl
+scripts/cross-build.sh \
+  --generation 4 \
+  --target aarch64-unknown-linux-musl
+```
+
+The builder rejects a musl bundle if the resulting ELF is not static. Validate
+it on the actual Gray Hawk image before treating this fallback as production.
 
 ## Build all generations
 
@@ -139,8 +154,9 @@ The generated config sets the requested generation and removes the default
 placeholder API token. Before deployment, set the FarmController URL, network
 interface, and protected `EDGEAGENT_API_TOKEN` environment value.
 
-`build-manifest.txt` records the SDK, sysroot, compiler, Rust target, and ELF
-architecture. `SHA256SUMS` covers the complete bundle.
+`build-manifest.txt` records the SDK, sysroot, compiler, Rust target, ELF
+architecture, linkage, and required GLIBC symbol versions. `SHA256SUMS` covers
+the complete bundle.
 
 ## Full Yocto build
 
@@ -174,7 +190,9 @@ avoid two services binding TCP 8888.
   examples. Run `scripts/cross-build.sh --list-sdks`, or generate and install
   an SDK from the matching BSP with `bitbake <image-name> -c populate_sdk`.
 - **`GLIBC_x.y not found` on target**: the SDK is newer than the target image.
-  Rebuild with the SDK generated from that exact image/BSP.
+  Run `getconf GNU_LIBC_VERSION` on the target and compare it with
+  `glibc_requirements` in the bundle manifest. Rebuild with the SDK generated
+  from that exact image/BSP; do not replace libc files on the target.
 - **Wrong ELF architecture**: inspect `build-manifest.txt`; verify the SDK and
   any `--target` override.
 - **Crates unavailable with `--offline`**: vendor/fetch dependencies before the

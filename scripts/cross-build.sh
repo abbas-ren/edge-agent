@@ -14,6 +14,7 @@ offline=false
 dry_run=false
 install_target=false
 list_sdks=false
+allow_generic=false
 
 declare -A sdk_envs=(
     [3]="${RCAR_GEN3_SDK_ENV:-}"
@@ -45,8 +46,9 @@ Options:
       --gen5-target <triple>    Override the inferred Gen5 Rust target
       --debug                   Build the development profile
       --offline                 Pass --offline to Cargo
-    --install-target          Install missing Rust std target via rustup only
-    --list-sdks               List installed Yocto SDK environment files
+        --install-target          Install missing Rust std target via rustup only
+        --list-sdks               List installed Yocto SDK environment files
+        --allow-generic           Permit a GNU release without a Yocto SDK
   -o, --output <directory>      Bundle output directory (default: ./dist)
       --dry-run                 Validate inputs and print planned builds
   -h, --help                    Show this help
@@ -56,6 +58,9 @@ Environment equivalents:
   RCAR_GEN3_RUST_TARGET, RCAR_GEN4_RUST_TARGET, RCAR_GEN5_RUST_TARGET
 
 --install-target does not install a C cross-linker or target sysroot.
+GNU release bundles require a Yocto SDK unless --allow-generic is supplied.
+Generic GNU bundles can require a newer glibc than the deployed board and are
+development-only. Musl release bundles must be statically linked.
 
 The SDK environment is expected to define CC and normally AR, LDFLAGS, and
 SDKTARGETSYSROOT. R-Car Linux SDKs commonly provide an environment-setup-*
@@ -114,6 +119,10 @@ while (($# > 0)); do
             ;;
         --list-sdks)
             list_sdks=true
+            shift
+            ;;
+        --allow-generic)
+            allow_generic=true
             shift
             ;;
         -o|--output)
@@ -310,6 +319,10 @@ build_generation() (
     fi
     [[ -n "${target}" ]] || fail "cannot infer the Rust target for Gen${selected_generation}; pass --gen${selected_generation}-target"
 
+    if [[ "${profile}" == release && -z "${sdk_env}" && "${target}" == *-linux-gnu* && "${allow_generic}" != true ]]; then
+        fail "Gen${selected_generation} GNU release builds require its matching Yocto SDK; pass --sdk-env or use --allow-generic for a development-only bundle"
+    fi
+
     if [[ -z "${CC:-}" ]]; then
         CC="$(default_compiler "${target}" || true)"
         [[ -n "${CC}" ]] || fail "no default compiler mapping for ${target}; source an SDK with --sdk-env"
@@ -362,6 +375,24 @@ build_generation() (
 
     local architecture
     architecture="$(verify_binary_architecture "${target}" "${bundle_dir}/edgeagent-rs")"
+    local linkage="dynamic"
+    command -v readelf >/dev/null 2>&1 || fail "readelf is required to audit binary compatibility"
+    if ! readelf --program-headers "${bundle_dir}/edgeagent-rs" | grep -q ' INTERP '; then
+        linkage="static"
+    fi
+    if [[ "${target}" == *-linux-musl* && "${linkage}" != static ]]; then
+        fail "${binary} targets musl but is dynamically linked; refusing a non-portable release bundle"
+    fi
+    local glibc_requirements="none"
+    if [[ "${target}" == *-linux-gnu* ]]; then
+        glibc_requirements="$(
+            readelf --version-info "${bundle_dir}/edgeagent-rs" \
+                | grep -o 'GLIBC_[0-9.]*' \
+                | sort -Vu \
+                | paste -sd, - || true
+        )"
+        [[ -n "${glibc_requirements}" ]] || glibc_requirements="none"
+    fi
     cat >"${bundle_dir}/build-manifest.txt" <<EOF
 edgeagent_version=$(cargo metadata --no-deps --format-version 1 | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -n1)
 generation=${selected_generation}
@@ -372,6 +403,8 @@ sdk_sysroot=${SDKTARGETSYSROOT:-none}
 compiler=${CC}
 rustc=$(rustc --version)
 elf=${architecture}
+linkage=${linkage}
+glibc_requirements=${glibc_requirements}
 EOF
     (
         cd "${bundle_dir}"
