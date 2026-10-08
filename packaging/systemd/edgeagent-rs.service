@@ -1,0 +1,34 @@
+[Unit]
+Description=Farm Edge Agent
+After=network-online.target local-fs.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/emmc
+ConditionPathIsReadWrite=/mnt/emmc
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=-/etc/edgeagent/environment
+ExecStart=/usr/bin/edgeagent-rs --config /etc/edgeagent/config.toml
+ExecStartPre=/usr/bin/edgeagent-rs --config /etc/edgeagent/config.toml --check
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=20s
+KillMode=mixed
+UMask=0077
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/mnt/emmc /usr/src
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,32 @@
+[server]
+bind = "0.0.0.0:8888"
+
+[farm]
+base_url = "https://farm-controller.example.com"
+heartbeat_seconds = 5
+request_timeout_seconds = 15
+require_tls = true
+
+[device]
+interface = "eth0"
+generation = 4
+name = "board"
+device_type = "v4m"
+test_timeout_seconds = 3600
+
+[paths]
+uid = "/mnt/emmc/UID.txt"
+heartbeat_timeout = "/mnt/emmc/timeout"
+current_test = "/usr/src/currentTest.txt"
+test_root = "/usr/src/tests"
+fw_printenv = "/usr/bin/fw_printenv"
+fw_setenv = "/usr/bin/fw_setenv"
+reboot = "/sbin/reboot"
+dmesg = "/bin/dmesg"
+
+[security]
+api_token = "replace-with-at-least-32-random-characters"
+
+[logging]
+level = "info"
+capacity = 5000
